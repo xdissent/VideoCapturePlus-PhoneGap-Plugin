@@ -15,6 +15,7 @@ typedef NSUInteger CDVCaptureError;
 @interface CDVImagePickerPlus : UIImagePickerController {
 }
 @property (copy)   NSString* callbackId;
+@property (strong, nonatomic) NSMutableArray *files;
 
 @end
 
@@ -33,8 +34,12 @@ typedef NSUInteger CDVCaptureError;
 @property (strong, nonatomic) UILabel *overlayBox;
 @property (strong, nonatomic) UILabel *stopwatchLabel;
 @property (strong, nonatomic) UILabel *progressbarLabel;
+@property (strong, nonatomic) UIBarButtonItem *recordButtonItem;
+@property (strong, nonatomic) UIBarButtonItem *capturedButtonItem;
+@property (strong, nonatomic) UIButton *capturedButton;
+@property (strong, nonatomic) UIToolbar *topToolBar;
 - (void)captureVideo:(CDVInvokedUrlCommand*)command;
-- (CDVPluginResult*)processVideo:(NSString*)moviePath forCallbackId:(NSString*)callbackId;
+- (CDVPluginResult*)processVideos:(NSArray*)movieUrls forCallbackId:(NSString*)callbackId;
 - (void)getFormatData:(CDVInvokedUrlCommand*)command;
 - (NSDictionary*)getMediaDictionaryFromPath:(NSString*)fullPath ofType:(NSString*)type;
 - (void)imagePickerController:(UIImagePickerController*)picker didFinishPickingMediaWithInfo:(NSDictionary*)info;

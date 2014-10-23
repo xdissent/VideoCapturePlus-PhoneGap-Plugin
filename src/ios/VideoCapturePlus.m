@@ -1,4 +1,5 @@
 #import "VideoCapturePlus.h"
+#import "UIBarButtonItem+Badge.h"
 #import <UIKit/UIDevice.h>
 
 #define kW3CMediaFormatHeight @"height"
@@ -78,6 +79,7 @@
     }
 
     UIView* overlayView = [[UIView alloc] initWithFrame:pickerController.view.frame];
+    UIView* overlayViewContainer = [[UIView alloc] initWithFrame:pickerController.view.frame];
 
     // png transparency
     [overlayView.layer setOpaque:NO];
@@ -111,12 +113,94 @@
             [self rotateOverlayIfNeeded:overlayView];
             [overlayView setCenter:CGPointMake(width/2,height/2)];
         }
-        pickerController.cameraOverlayView = overlayView;
+        [overlayViewContainer addSubview:overlayView];
+        pickerController.cameraOverlayView = overlayViewContainer;
+        [self addToolbars];
     }
 }
 
 - (void) orientationChanged:(NSNotification *)notification {
     [self alignOverlayDimensionsWithOrientation];
+}
+
+- (UIImage *)lastVideoThumbImage {
+    if ([[pickerController files] count] == 0) {
+        return nil;
+    }
+    AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:[[pickerController files] lastObject] options:nil];
+    AVAssetImageGenerator *generate = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+    generate.appliesPreferredTrackTransform = YES;
+    NSError *err = NULL;
+    CMTime time = CMTimeMake(1, 60);
+    CGImageRef imgRef = [generate copyCGImageAtTime:time actualTime:NULL error:&err];
+    if (err) {
+        return nil;
+    }
+    UIImage *image = [[UIImage alloc] initWithCGImage:imgRef];
+    CGSize newSize = CGSizeMake(44, 44);
+    UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
+    [image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
+    image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return image;
+}
+
+- (void)updateCaptureButton
+{
+    NSLog(@"UPDATE CAPTURE BUTTON");
+    UIImage *image = [self lastVideoThumbImage];
+    if (image) {
+        NSLog(@"UPDATING CAPTURE IMAGE");
+        self.capturedButton.frame = CGRectMake(0,0, image.size.width, image.size.height);
+        [self.capturedButton setBackgroundImage:image forState:UIControlStateNormal];
+        [self.capturedButton setHidden:NO];
+    } else {
+        NSLog(@"NOT UPDATING CAPTURE IMAGE");
+        [self.capturedButton setHidden:YES];
+    }
+}
+
+- (void)updateCaptureButtonBadge
+{
+    NSLog(@"UPDATE CAPTURE BUTTON BADGE");
+    self.capturedButtonItem.badgeValue = [NSString stringWithFormat:@"%lu", (unsigned long)[[pickerController files] count]];
+}
+
+- (void)addToolbars
+{
+    self.recordButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCamera target:self action:@selector(captureAction)];
+    if (inUse) {
+        [self.recordButtonItem setTintColor:[UIColor redColor]];
+    } else {
+        [self.recordButtonItem setTintColor:[UIColor yellowColor]];
+    }
+    
+    self.capturedButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self updateCaptureButton];
+    self.capturedButtonItem = [[UIBarButtonItem alloc] initWithCustomView:self.capturedButton];
+    [self updateCaptureButtonBadge];
+
+    UIToolbar *toolBar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, pickerController.cameraOverlayView.frame.size.height - 54, pickerController.cameraOverlayView.frame.size.width, 55)];
+    toolBar.barStyle =  UIBarStyleBlackTranslucent;
+    NSArray *items = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFixedSpace target:nil action:nil],
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                       self.recordButtonItem,
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                       self.capturedButtonItem];
+    [toolBar setItems:items];
+    [pickerController.cameraOverlayView addSubview:toolBar];
+    
+    self.topToolBar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, pickerController.cameraOverlayView.frame.size.width, 44)];
+    self.topToolBar.barStyle =  UIBarStyleBlackTranslucent;
+    [self.topToolBar setTintColor:[UIColor whiteColor]];
+    NSArray *topItems = @[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(cancelRecording)],
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil],
+                       [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(finishRecording)]];
+    [self.topToolBar setItems:topItems];
+    [self.topToolBar setHidden:inUse];
+    [pickerController.cameraOverlayView addSubview:self.topToolBar];
 }
 
 - (void)captureVideo:(CDVInvokedUrlCommand*)command {
@@ -172,9 +256,12 @@
         pickerController = nil;
     } else {
         pickerController.delegate = self;
+        pickerController.files = [NSMutableArray array];
         
         pickerController.sourceType = UIImagePickerControllerSourceTypeCamera;
+         pickerController.showsCameraControls = NO;
         pickerController.allowsEditing = NO;
+        
         // iOS 3.0
         pickerController.mediaTypes = [NSArray arrayWithObjects:mediaType, nil];
         
@@ -199,26 +286,26 @@
 
 
 
-			if(overlayText != nil) {
-                NSUInteger txtLength = overlayText.length;
-                
-                CGRect labelFrame = CGRectMake(10, 40, CGRectGetWidth(pickerController.view.frame) - 20, 40 + (20*(txtLength/25)));
-                
-                self.overlayBox = [[UILabel alloc] initWithFrame:labelFrame];
-                
-                self.overlayBox.textColor = [UIColor colorWithRed:3/255.0f green:211/255.0f blue:255/255.0f alpha:1.0f];
-                self.overlayBox.backgroundColor = [UIColor colorWithRed:0/255.0f green:0/255.0f blue:0/255.0f alpha:0.7f];
-                self.overlayBox.font = [UIFont systemFontOfSize:16];
-                self.overlayBox.lineBreakMode = NSLineBreakByWordWrapping;
-                self.overlayBox.numberOfLines = 10;
-                self.overlayBox.alpha = 0.90;
-                
-                self.overlayBox.textAlignment = UITextAlignmentCenter;
-                
-                self.overlayBox.text = overlayText;
-                
-                [pickerController.view addSubview:self.overlayBox];
-            }
+//			if(overlayText != nil) {
+//                NSUInteger txtLength = overlayText.length;
+//                
+//                CGRect labelFrame = CGRectMake(10, 40, CGRectGetWidth(pickerController.view.frame) - 20, 40 + (20*(txtLength/25)));
+//                
+//                self.overlayBox = [[UILabel alloc] initWithFrame:labelFrame];
+//                
+//                self.overlayBox.textColor = [UIColor colorWithRed:3/255.0f green:211/255.0f blue:255/255.0f alpha:1.0f];
+//                self.overlayBox.backgroundColor = [UIColor colorWithRed:0/255.0f green:0/255.0f blue:0/255.0f alpha:0.7f];
+//                self.overlayBox.font = [UIFont systemFontOfSize:16];
+//                self.overlayBox.lineBreakMode = NSLineBreakByWordWrapping;
+//                self.overlayBox.numberOfLines = 10;
+//                self.overlayBox.alpha = 0.90;
+//                
+//                self.overlayBox.textAlignment = UITextAlignmentCenter;
+//                
+//                self.overlayBox.text = overlayText;
+//                
+//                [pickerController.view addSubview:self.overlayBox];
+//            }
 			
             
             // trying to add a progressbar to the bottom
@@ -272,10 +359,12 @@
     //   [self.timerLabel setText:[self formatTime:self.avRecorder.currentTime]];
 //}
 
-- (CDVPluginResult*)processVideo:(NSString*)moviePath forCallbackId:(NSString*)callbackId {
+- (CDVPluginResult*)processVideos:(NSArray*)movieUrls forCallbackId:(NSString*)callbackId {
     // save the movie to photo album (only avail as of iOS 3.1)
-    NSDictionary* fileDict = [self getMediaDictionaryFromPath:moviePath ofType:nil];
-    NSArray* fileArray = [NSArray arrayWithObject:fileDict];
+    NSMutableArray* fileArray = [NSMutableArray array];
+    for (NSURL *movieUrl in movieUrls) {
+        [fileArray addObject:[self getMediaDictionaryFromPath:[movieUrl path] ofType:nil]];
+    }
     return [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:fileArray];
 }
 
@@ -394,35 +483,64 @@
  *      size
  */
 - (void)imagePickerController:(UIImagePickerController*)picker didFinishPickingMediaWithInfo:(NSDictionary*)info {
+    NSLog(@"DID FINISH %@", info);
+    inUse = NO;
+    [self.recordButtonItem setTintColor:[UIColor yellowColor]];
+    [self.topToolBar setHidden:NO];
     CDVImagePickerPlus* cameraPicker = (CDVImagePickerPlus*)picker;
-    NSString* callbackId = cameraPicker.callbackId;
+    NSURL *movieUrl = [info objectForKey:UIImagePickerControllerMediaURL];
     
-    if ([picker respondsToSelector:@selector(presentingViewController)]) {
-        [[picker presentingViewController] dismissModalViewControllerAnimated:YES];
-    } else {
-        [[picker parentViewController] dismissModalViewControllerAnimated:YES];
+    if (movieUrl) {
+        [[cameraPicker files] addObject:movieUrl];
+        [self updateCaptureButton];
+        [self updateCaptureButtonBadge];
     }
-    
-    CDVPluginResult* result = nil;
-    NSString* moviePath = [[info objectForKey:UIImagePickerControllerMediaURL] path];
-    if (moviePath) {
-        result = [self processVideo:moviePath forCallbackId:callbackId];
+
+    // Maximum number of files reached
+    if ([[cameraPicker files] count] >= 3) {
+        [self finishRecording];
     }
-    if (!result) {
-        result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageToErrorObject:CAPTURE_INTERNAL_ERR];
-    }
-    [self.commandDelegate sendPluginResult:result callbackId:callbackId];
-    pickerController = nil;
 }
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController*)picker {
-    CDVImagePickerPlus* cameraPicker = (CDVImagePickerPlus*)picker;
-    NSString* callbackId = cameraPicker.callbackId;
-    
-    if ([picker respondsToSelector:@selector(presentingViewController)]) {
-        [[picker presentingViewController] dismissModalViewControllerAnimated:YES];
+    NSLog(@"DID CANCEL");
+    [self cancelRecording];
+}
+
+- (void)beginRecording
+{
+    NSLog(@"BEGIN RECORDING");
+    inUse = YES;
+    [self.recordButtonItem setTintColor:[UIColor redColor]];
+    [self.topToolBar setHidden:YES];
+    [pickerController startVideoCapture];
+}
+
+- (void)endRecording
+{
+    NSLog(@"END RECORDING");
+    [pickerController stopVideoCapture];
+}
+
+- (IBAction)captureAction
+{
+    NSLog(@"CAPTURE ACTION");
+    if (inUse) {
+        [self endRecording];
     } else {
-        [[picker parentViewController] dismissModalViewControllerAnimated:YES];
+        [self beginRecording];
+    }
+}
+
+- (IBAction)cancelRecording
+{
+    NSLog(@"CANCEL RECORDING");
+    NSString* callbackId = pickerController.callbackId;
+    
+    if ([pickerController respondsToSelector:@selector(presentingViewController)]) {
+        [[pickerController presentingViewController] dismissModalViewControllerAnimated:YES];
+    } else {
+        [[pickerController parentViewController] dismissModalViewControllerAnimated:YES];
     }
     
     CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageToErrorObject:CAPTURE_NO_MEDIA_FILES];
@@ -430,4 +548,22 @@
     pickerController = nil;
 }
 
+- (IBAction)finishRecording
+{
+    NSLog(@"FINISH RECORDING");
+
+    if ([pickerController respondsToSelector:@selector(presentingViewController)]) {
+        [[pickerController presentingViewController] dismissModalViewControllerAnimated:YES];
+    } else {
+        [[pickerController parentViewController] dismissModalViewControllerAnimated:YES];
+    }
+    
+    CDVPluginResult* result = [self processVideos:[pickerController files] forCallbackId:pickerController.callbackId];
+    if (!result) {
+        result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageToErrorObject:CAPTURE_INTERNAL_ERR];
+    }
+    [self.commandDelegate sendPluginResult:result callbackId:pickerController.callbackId];
+    pickerController = nil;
+}
+                       
 @end
