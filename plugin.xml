@@ -34,9 +34,12 @@
 
     <header-file src="src/ios/VideoCapturePlus.h"/>
     <source-file src="src/ios/VideoCapturePlus.m"/>
+    <header-file src="src/ios/UIBarButtonItem+Badge.h"/>
+    <source-file src="src/ios/UIBarButtonItem+Badge.m"/>
 
     <framework src="CoreGraphics.framework" />
     <framework src="MobileCoreServices.framework" />
+    <framework src="QuartzCore.framework" />
   </platform>
 
   <!-- android -->
